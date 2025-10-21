@@ -4,7 +4,7 @@ import utime
 import network
 import ntptime
 
-# Set up WiFi connection
+# Configurar conexión WiFi
 wifi_ssid = "Wokwi-GUEST"
 wifi_password = ""
 
@@ -15,200 +15,191 @@ sta_if.connect(wifi_ssid, wifi_password)
 while not sta_if.isconnected():
     pass
 
-# Set up I2C connection for OLED display
+# Configurar conexión I2C para la pantalla OLED
 i2c = I2C(0, scl=Pin(22), sda=Pin(21))
 
 oled_width = 128
 oled_height = 64
 oled = ssd1306.SSD1306_I2C(oled_width, oled_height, i2c)
 
-# Set up buzzer pin
+# Configurar pin del zumbador
 buzzer_pin = Pin(13, Pin.OUT)
 buzzer_timer = 0
 buzzer_flag = False
 
-# Set up buttons for changing alarm time
+# Configurar botones para cambiar la hora de la alarma
 button1 = Pin(15, Pin.IN, Pin.PULL_UP)
 button2 = Pin(2, Pin.IN, Pin.PULL_UP)
 
-# Initialize variables for debounce
+# Inicializar variables para antirrebote
 button1_pressed = False
 button2_pressed = False
 
-# Initialize variables for alarm
+# Inicializar variables para la alarma
 alarm_hour = 0
 alarm_minute = 0
 alarm_set = False
 alarm_set_text = "Off"
 alarm_active = False
 
-# Initialize variables for editing mode
+# Inicializar variables para el modo de edición
 edit_mode = False
-edit_stage = 0  # 0 - not editing, 1 - editing hour, 2 - editing minute
+edit_stage = 0  # 0 - sin edición, 1 - editando hora, 2 - editando minutos
 edit_timer_start = 0
 flash_flag = False
 flash_timer_start = 0
 
-# Function to display time and alarm on OLED
+# Función para mostrar la hora y la alarma en la pantalla OLED
 def display_time_alarm():
     oled.fill(0)
     current_time = utime.localtime()
     formatted_time = "{:02d}:{:02d}:{:02d}".format(current_time[3], current_time[4], current_time[5])
-    oled.text("Time: " + formatted_time, 0, 0)
+    oled.text("Hora: " + formatted_time, 0, 0)
     
     if alarm_set:
         alarm_set_text = "On" 
     else:
         alarm_set_text = "Off" 
 
+    # Mostrar diferentes estados de edición con parpadeo
     if edit_mode and edit_stage == 1:
         if flash_flag:
-            oled.text("Alarm:   :{:02d} {}".format(alarm_minute, alarm_set_text), 0, 20)
+            oled.text("Alarma:   :{:02d} {}".format(alarm_minute, alarm_set_text), 0, 20)
         else:
-            oled.text("Alarm: {:02d}:{:02d} {}".format(alarm_hour, alarm_minute, alarm_set_text), 0, 20)
+            oled.text("Alarma: {:02d}:{:02d} {}".format(alarm_hour, alarm_minute, alarm_set_text), 0, 20)
     elif edit_mode and edit_stage == 2:
         if flash_flag:
-            oled.text("Alarm: {:02d}:   {}".format(alarm_hour, alarm_set_text), 0, 20)
+            oled.text("Alarma: {:02d}:   {}".format(alarm_hour, alarm_set_text), 0, 20)
         else:
-            oled.text("Alarm: {:02d}:{:02d} {}".format(alarm_hour, alarm_minute, alarm_set_text), 0, 20)
+            oled.text("Alarma: {:02d}:{:02d} {}".format(alarm_hour, alarm_minute, alarm_set_text), 0, 20)
     elif edit_mode and edit_stage == 3:
         if flash_flag:
-            oled.text("Alarm: {:02d}:{:02d}    ".format(alarm_hour, alarm_minute), 0, 20)
+            oled.text("Alarma: {:02d}:{:02d}    ".format(alarm_hour, alarm_minute), 0, 20)
         else:
-            oled.text("Alarm: {:02d}:{:02d} {}".format(alarm_hour, alarm_minute, alarm_set_text), 0, 20)
+            oled.text("Alarma: {:02d}:{:02d} {}".format(alarm_hour, alarm_minute, alarm_set_text), 0, 20)
     else:
-        oled.text("Alarm: {:02d}:{:02d} {}".format(alarm_hour, alarm_minute, alarm_set_text), 0, 20)
+        oled.text("Alarma: {:02d}:{:02d} {}".format(alarm_hour, alarm_minute, alarm_set_text), 0, 20)
     
     oled.show()
 
-
-# Function to handle button1 interrupt
+# Función para manejar la interrupción del botón 1
 def button1_interrupt(pin):
     global button1_pressed
     button1_pressed = True
 
-# Function to handle button2 interrupt
+# Función para manejar la interrupción del botón 2
 def button2_interrupt(pin):
     global button2_pressed
     button2_pressed = True
 
-# Set interrupt handlers for buttons
+# Asignar funciones de interrupción a los botones
 button1.irq(trigger=Pin.IRQ_FALLING, handler=button1_interrupt)
 button2.irq(trigger=Pin.IRQ_FALLING, handler=button2_interrupt)
 
-# Function to set alarm
+# Función para establecer la alarma
 def set_alarm(hour, minute):
     global alarm_hour, alarm_minute
     alarm_hour = hour
     alarm_minute = minute
 
-# Function to check alarm
+# Función para verificar si debe activarse la alarma
 def check_alarm():
     if alarm_set:
         current_time = utime.localtime()
         if not edit_mode and current_time[3] == alarm_hour and current_time[4] == alarm_minute:
             activate_alarm()
 
-# Function to activate alarm
+# Función para activar la alarma
 def activate_alarm():
     global alarm_active
     alarm_active = True
 
-# Function to deactivate alarm
+# Función para desactivar la alarma
 def deactivate_alarm():
     global alarm_active, alarm_set, buzzer_flag 
     alarm_active = False
-    alarm_set=False
-    buzzer_flag=False
+    alarm_set = False
+    buzzer_flag = False
 
-# Function to enter edit mode
+# Función para entrar en modo de edición
 def enter_edit_mode():
     global edit_mode, edit_stage, edit_timer_start
     edit_mode = True
     edit_stage = 1
     edit_timer_start = utime.ticks_ms()
 
-# Function to exit edit mode
+# Función para salir del modo de edición
 def exit_edit_mode():
     global edit_mode, edit_stage
     edit_mode = False
     edit_stage = 0
 
-# Get time from NTP server
+# Obtener hora desde el servidor NTP
 ntptime.settime()
 
-# Main loop
+# Bucle principal
 while True:
     check_alarm()
     display_time_alarm()
 
-    # Check if alarm is active and any button is pressed to silence it
+    # Verificar si la alarma está activa y se ha presionado algún botón para silenciarla
     if alarm_active and (button1_pressed or button2_pressed):
         deactivate_alarm()
-        button1_pressed = False  # Reset button state
-        button2_pressed = False  # Reset button state
-        
+        button1_pressed = False  # Reiniciar estado del botón
+        button2_pressed = False  # Reiniciar estado del botón
 
-    # Check if in edit mode and button1 is being pressed
+    # Verificar si estamos en modo edición y se presiona el botón 1
     if edit_mode and button1_pressed:
         if edit_stage == 1:
-            print("swap 2")
+            print("cambiar a etapa 2")
             edit_stage = 2
         elif edit_stage == 2:
-            print("swap 3")
+            print("cambiar a etapa 3")
             edit_stage = 3
         else:
-            print("exit")
+            print("salir de edición")
             exit_edit_mode()
-        button1_pressed = False  # Reset button state
-        
-        
-    # Check if button1 is being pressed
+        button1_pressed = False  # Reiniciar estado del botón
+
+    # Verificar si se presiona el botón 1 para entrar en modo edición
     if not edit_mode and button1_pressed:
-        print("enter")
+        print("entrar en edición")
         enter_edit_mode()
-        button1_pressed = False  # Reset button state
-        
+        button1_pressed = False  # Reiniciar estado del botón
 
-
-    # Handle editing alarm hour
+    # Manejar edición de la hora de la alarma
     if edit_mode and edit_stage == 1:
         if button2_pressed:
             alarm_hour = (alarm_hour + 1) % 24
-            button2_pressed = False  # Reset button state
-            
+            button2_pressed = False  # Reiniciar estado del botón
 
-    # Handle editing alarm minute
+    # Manejar edición de los minutos de la alarma
     if edit_mode and edit_stage == 2:
         if button2_pressed:
             alarm_minute = (alarm_minute + 1) % 60
-            
-            button2_pressed = False  # Reset button state
+            button2_pressed = False  # Reiniciar estado del botón
 
-    # Handle editing alarm set
+    # Manejar activación/desactivación de la alarma
     if edit_mode and edit_stage == 3:
         if button2_pressed:
-            alarm_set=not alarm_set
-            
-            button2_pressed = False  # Reset button state
+            alarm_set = not alarm_set
+            button2_pressed = False  # Reiniciar estado del botón
 
-    # Toggle flash flag every second
+    # Alternar parpadeo cada segundo
     if utime.ticks_diff(utime.ticks_ms(), flash_timer_start) >= 1000:
-        # Toggle flash flag
         flash_flag = not flash_flag if edit_mode else False
-        flash_timer_start=utime.ticks_ms()
+        flash_timer_start = utime.ticks_ms()
 
+    # Activar zumbador si la alarma está activa
     if alarm_active:
-        # Toggle buzzer every 0.5 seconds when alarm active
         if utime.ticks_diff(utime.ticks_ms(), buzzer_timer) >= 500:
-            # Toggle buzz
             buzzer_flag = not buzzer_flag
-            buzzer_timer=utime.ticks_ms()
+            buzzer_timer = utime.ticks_ms()
 
+    # Encender o apagar el zumbador
     if buzzer_flag:
         buzzer_pin.on()
     else:
         buzzer_pin.off()
 
-
-    utime.sleep(0.1)  # Update time every 0.1 seconds for smoother flashing
+    utime.sleep(0.1)  # Actualizar cada 0.1 segundos para parpadeo suave
