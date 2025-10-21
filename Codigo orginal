@@ -1,0 +1,214 @@
+from machine import Pin, I2C
+import ssd1306
+import utime
+import network
+import ntptime
+
+# Set up WiFi connection
+wifi_ssid = "Wokwi-GUEST"
+wifi_password = ""
+
+sta_if = network.WLAN(network.STA_IF)
+sta_if.active(True)
+sta_if.connect(wifi_ssid, wifi_password)
+
+while not sta_if.isconnected():
+    pass
+
+# Set up I2C connection for OLED display
+i2c = I2C(0, scl=Pin(22), sda=Pin(21))
+
+oled_width = 128
+oled_height = 64
+oled = ssd1306.SSD1306_I2C(oled_width, oled_height, i2c)
+
+# Set up buzzer pin
+buzzer_pin = Pin(13, Pin.OUT)
+buzzer_timer = 0
+buzzer_flag = False
+
+# Set up buttons for changing alarm time
+button1 = Pin(15, Pin.IN, Pin.PULL_UP)
+button2 = Pin(2, Pin.IN, Pin.PULL_UP)
+
+# Initialize variables for debounce
+button1_pressed = False
+button2_pressed = False
+
+# Initialize variables for alarm
+alarm_hour = 0
+alarm_minute = 0
+alarm_set = False
+alarm_set_text = "Off"
+alarm_active = False
+
+# Initialize variables for editing mode
+edit_mode = False
+edit_stage = 0  # 0 - not editing, 1 - editing hour, 2 - editing minute
+edit_timer_start = 0
+flash_flag = False
+flash_timer_start = 0
+
+# Function to display time and alarm on OLED
+def display_time_alarm():
+    oled.fill(0)
+    current_time = utime.localtime()
+    formatted_time = "{:02d}:{:02d}:{:02d}".format(current_time[3], current_time[4], current_time[5])
+    oled.text("Time: " + formatted_time, 0, 0)
+    
+    if alarm_set:
+        alarm_set_text = "On" 
+    else:
+        alarm_set_text = "Off" 
+
+    if edit_mode and edit_stage == 1:
+        if flash_flag:
+            oled.text("Alarm:   :{:02d} {}".format(alarm_minute, alarm_set_text), 0, 20)
+        else:
+            oled.text("Alarm: {:02d}:{:02d} {}".format(alarm_hour, alarm_minute, alarm_set_text), 0, 20)
+    elif edit_mode and edit_stage == 2:
+        if flash_flag:
+            oled.text("Alarm: {:02d}:   {}".format(alarm_hour, alarm_set_text), 0, 20)
+        else:
+            oled.text("Alarm: {:02d}:{:02d} {}".format(alarm_hour, alarm_minute, alarm_set_text), 0, 20)
+    elif edit_mode and edit_stage == 3:
+        if flash_flag:
+            oled.text("Alarm: {:02d}:{:02d}    ".format(alarm_hour, alarm_minute), 0, 20)
+        else:
+            oled.text("Alarm: {:02d}:{:02d} {}".format(alarm_hour, alarm_minute, alarm_set_text), 0, 20)
+    else:
+        oled.text("Alarm: {:02d}:{:02d} {}".format(alarm_hour, alarm_minute, alarm_set_text), 0, 20)
+    
+    oled.show()
+
+
+# Function to handle button1 interrupt
+def button1_interrupt(pin):
+    global button1_pressed
+    button1_pressed = True
+
+# Function to handle button2 interrupt
+def button2_interrupt(pin):
+    global button2_pressed
+    button2_pressed = True
+
+# Set interrupt handlers for buttons
+button1.irq(trigger=Pin.IRQ_FALLING, handler=button1_interrupt)
+button2.irq(trigger=Pin.IRQ_FALLING, handler=button2_interrupt)
+
+# Function to set alarm
+def set_alarm(hour, minute):
+    global alarm_hour, alarm_minute
+    alarm_hour = hour
+    alarm_minute = minute
+
+# Function to check alarm
+def check_alarm():
+    if alarm_set:
+        current_time = utime.localtime()
+        if not edit_mode and current_time[3] == alarm_hour and current_time[4] == alarm_minute:
+            activate_alarm()
+
+# Function to activate alarm
+def activate_alarm():
+    global alarm_active
+    alarm_active = True
+
+# Function to deactivate alarm
+def deactivate_alarm():
+    global alarm_active, alarm_set, buzzer_flag 
+    alarm_active = False
+    alarm_set=False
+    buzzer_flag=False
+
+# Function to enter edit mode
+def enter_edit_mode():
+    global edit_mode, edit_stage, edit_timer_start
+    edit_mode = True
+    edit_stage = 1
+    edit_timer_start = utime.ticks_ms()
+
+# Function to exit edit mode
+def exit_edit_mode():
+    global edit_mode, edit_stage
+    edit_mode = False
+    edit_stage = 0
+
+# Get time from NTP server
+ntptime.settime()
+
+# Main loop
+while True:
+    check_alarm()
+    display_time_alarm()
+
+    # Check if alarm is active and any button is pressed to silence it
+    if alarm_active and (button1_pressed or button2_pressed):
+        deactivate_alarm()
+        button1_pressed = False  # Reset button state
+        button2_pressed = False  # Reset button state
+        
+
+    # Check if in edit mode and button1 is being pressed
+    if edit_mode and button1_pressed:
+        if edit_stage == 1:
+            print("swap 2")
+            edit_stage = 2
+        elif edit_stage == 2:
+            print("swap 3")
+            edit_stage = 3
+        else:
+            print("exit")
+            exit_edit_mode()
+        button1_pressed = False  # Reset button state
+        
+        
+    # Check if button1 is being pressed
+    if not edit_mode and button1_pressed:
+        print("enter")
+        enter_edit_mode()
+        button1_pressed = False  # Reset button state
+        
+
+
+    # Handle editing alarm hour
+    if edit_mode and edit_stage == 1:
+        if button2_pressed:
+            alarm_hour = (alarm_hour + 1) % 24
+            button2_pressed = False  # Reset button state
+            
+
+    # Handle editing alarm minute
+    if edit_mode and edit_stage == 2:
+        if button2_pressed:
+            alarm_minute = (alarm_minute + 1) % 60
+            
+            button2_pressed = False  # Reset button state
+
+    # Handle editing alarm set
+    if edit_mode and edit_stage == 3:
+        if button2_pressed:
+            alarm_set=not alarm_set
+            
+            button2_pressed = False  # Reset button state
+
+    # Toggle flash flag every second
+    if utime.ticks_diff(utime.ticks_ms(), flash_timer_start) >= 1000:
+        # Toggle flash flag
+        flash_flag = not flash_flag if edit_mode else False
+        flash_timer_start=utime.ticks_ms()
+
+    if alarm_active:
+        # Toggle buzzer every 0.5 seconds when alarm active
+        if utime.ticks_diff(utime.ticks_ms(), buzzer_timer) >= 500:
+            # Toggle buzz
+            buzzer_flag = not buzzer_flag
+            buzzer_timer=utime.ticks_ms()
+
+    if buzzer_flag:
+        buzzer_pin.on()
+    else:
+        buzzer_pin.off()
+
+
+    utime.sleep(0.1)  # Update time every 0.1 seconds for smoother flashing
